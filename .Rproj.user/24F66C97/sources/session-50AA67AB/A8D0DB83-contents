@@ -1,0 +1,167 @@
+---
+title: "index"
+format: html
+editor: visual
+execute:
+  echo: false
+---
+
+```{r}
+
+suppressPackageStartupMessages(library(worldcup))
+suppressPackageStartupMessages(library(worldfootballR))
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(janitor))
+suppressPackageStartupMessages(library(gt))
+suppressPackageStartupMessages(library(gtExtras))
+
+match_result <- fotmob_get_league_matches(league_id = 77)
+home <- match_result %>% pull(home) %>% rename(home = name) %>% select(home)
+away <- match_result %>% pull(away) %>% rename(away = name) %>% select(away)
+status <- match_result %>% pull(status) 
+matches <- match_result %>% select(-home, -away, -status)
+match_results <- bind_cols(matches, home, away, status)
+match_results <- match_results %>% 
+  mutate(match_name = paste0(home, " vs ", away)) %>% 
+  separate(scoreStr, into = c("home_score", "away_score"), sep = " - ") 
+
+league_table <- fotmob_get_league_tables(league_id = 77)
+
+league_table <- league_table %>% filter(table_type == "all") %>% 
+  mutate(group_name = str_replace(group_name, "Grp.", "Group"))
+
+groups <- league_table %>% 
+  select(group_name, table_name) %>% 
+  mutate(home = table_name)
+
+match_results_and_league_table <- match_results %>% left_join(groups, by = "home")
+
+results <- match_results_and_league_table
+
+
+```
+
+```{r}
+result_table <- function(data, match_id) {
+  one_result <- data %>% filter(id == match_id) %>% 
+  select(home, away, match_name, home_score, away_score, month_key, group_name)
+
+home_result <- one_result %>% select(team = home, score = home_score) 
+away_result <- one_result %>% select(team = away, score = away_score) 
+
+bind_rows(home_result, away_result) %>% gt() %>% gt_theme_pff() %>% opt_row_striping(FALSE)
+}
+```
+
+
+
+```{r}
+# Get data
+# Uses match_result ids to get team stats
+
+match_stats <- fotmob_get_match_team_stats(match_result$id) 
+```
+
+
+
+```{r}
+# Custom Function: get_top_stats
+## -- cols_label() # https://gt.rstudio.com/reference/cols_label.html
+
+
+get_top_stats <- function(data, id) {
+  
+ data <-  data %>% 
+    filter(match_id == id) 
+  
+  home <- data %>% pull(home_team) %>% unique()
+away <- data %>% pull(away_team) %>% unique()
+
+
+  data %>% 
+   filter(title == "Top stats") %>% 
+  select(stats_title, home_value, away_value) %>% 
+  gt() %>% 
+    cols_label(
+      stats_title = "",
+   home_value = home,
+   away_value = away
+  ) %>% 
+    gt_theme_pff()
+}
+```
+
+
+## Test functions
+
+```{r}
+get_top_stats(match_stats, 3854591)
+
+result_table(results, 3854591)
+```
+
+
+
+## Loop
+
+```{r}
+#| output: asis
+dir.create("results", showWarnings = FALSE)
+
+for(i in seq(nrow(results))) {
+  
+  folder<-dir.create(paste0("results/", results$id[i]), showWarnings = FALSE)
+  
+  table <- result_table(results, results$id[i])
+  
+  filename <- paste0("results/",results$id[i], "/",results$id[i], "_score.png")
+  
+  gtsave(table, paste0("results/", results$id[i], "/",results$id[i], "_score.png"), zoom = 5)
+  
+  top_stats <- get_top_stats(match_stats, results$id[i])
+  
+  filename2 <- paste0("results/",results$id[i], "/",results$id[i], "_stats.png")
+  
+  gtsave(top_stats, paste0("results/", results$id[i], "/",results$id[i], "_stats.png"), zoom = 5)
+  
+  
+  title <- str_to_title(str_replace_all(results$id[i], "-", " "))
+  
+  title <- str_replace(title, "Vs", "vs")
+  
+  cat(" \n###", title,"\n")
+
+  knitr::include_graphics(filename)
+ 
+  cat(paste0("![](", filename,")"))
+  
+  knitr::include_graphics(filename2)
+ 
+  cat(paste0("![](", filename2,")"))
+
+  cat("  \n")
+  
+
+}
+```
+
+
+```{r}
+
+#for(i in seq(nrow(results))) {
+
+
+ # top_stats <- get_top_stats(match_stats, results$id[i])
+  
+#  filename2 <- paste0("results/",results$id[i], "/",results$id[i], "_stats.png")
+  
+ # gtsave(top_stats, paste0("results/", results$id[i], "/",results$id[i], "_stats.png"), zoom = 5)
+#  
+
+  
+#}
+
+  
+```
+
+
